@@ -1,0 +1,88 @@
+# Cortex Analyst-style semantic model: exposes quarterly finance metrics
+# to natural-language queries ("how did NRR trend over the last 4 quarters?").
+name: finance_quarterly_metrics
+description: >
+  Quarterly company-level finance metrics for Strategic Finance. Ask about
+  product revenue, growth, net revenue retention, RPO, or large-customer
+  counts by fiscal quarter.
+
+tables:
+  - name: quarterly_metrics
+    description: One row per fiscal quarter (fiscal year ends January 31).
+    base_table:
+      database: FINANCE
+      schema: REPORTING
+      table: QUARTERLY_METRICS
+
+    dimensions:
+      - name: fiscal_quarter
+        expr: fiscal_quarter
+        data_type: varchar
+        description: Fiscal quarter label, e.g. 'Q1 FY27' (FY27 ends Jan 31, 2027).
+        sample_values: ["Q4 FY26", "Q1 FY27"]
+        synonyms: ["quarter", "fiscal period", "FQ"]
+      - name: fiscal_year
+        expr: fiscal_year
+        data_type: number
+        description: Fiscal year (ends January 31 of the calendar year named).
+        synonyms: ["FY", "year"]
+
+    time_dimensions:
+      - name: quarter_end
+        expr: quarter_end
+        data_type: date
+        description: Last day of the fiscal quarter.
+
+    measures:
+      - name: product_revenue
+        expr: product_revenue_m
+        data_type: number
+        default_aggregation: sum
+        description: Product revenue in $ millions (primary guided metric).
+        synonyms: ["revenue", "product rev", "top line"]
+      - name: total_revenue
+        expr: total_revenue_m
+        data_type: number
+        default_aggregation: sum
+        description: Total revenue in $ millions (product + professional services).
+      - name: nrr
+        expr: nrr_pct
+        data_type: number
+        default_aggregation: avg
+        description: Net revenue retention rate (%). Use avg, never sum.
+        synonyms: ["net revenue retention", "retention", "expansion rate"]
+      - name: rpo
+        expr: rpo_b
+        data_type: number
+        default_aggregation: max
+        description: Remaining performance obligations in $ billions, end of quarter (point-in-time — use max/last, never sum across quarters).
+        synonyms: ["remaining performance obligations", "backlog", "contracted revenue"]
+      - name: million_dollar_customers
+        expr: customers_1m_plus
+        data_type: number
+        default_aggregation: max
+        description: Customers with >$1M trailing-12M product revenue (point-in-time).
+        synonyms: ["large customers", "$1M customers", "million dollar accounts"]
+
+verified_queries:
+  - name: yoy_product_revenue_growth
+    question: "What was product revenue growth YoY in the latest quarter?"
+    sql: |
+      SELECT fiscal_quarter,
+             product_revenue_m,
+             product_revenue_m / LAG(product_revenue_m, 4)
+               OVER (ORDER BY quarter_end) - 1 AS yoy_growth
+      FROM finance.reporting.quarterly_metrics
+      QUALIFY quarter_end = MAX(quarter_end) OVER ()
+  - name: nrr_trend
+    question: "How has NRR trended over the last four quarters?"
+    sql: |
+      SELECT fiscal_quarter, nrr_pct
+      FROM finance.reporting.quarterly_metrics
+      ORDER BY quarter_end DESC
+      LIMIT 4
+
+custom_instructions: >
+  Fiscal years end January 31. "Last quarter" means the most recent completed
+  fiscal quarter. NRR and RPO are point-in-time metrics: never sum them across
+  quarters. When a user asks about growth, default to YoY on product revenue.

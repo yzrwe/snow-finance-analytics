@@ -1,0 +1,60 @@
+name: quarterly-revenue-analysis
+version: 1.0.0
+description: >
+  Encodes the quarterly revenue review workflow for a Strategic Finance team.
+  Given a quarter (e.g. "Q1 FY27"), the skill computes beat/miss vs. prior
+  guidance, QoQ and YoY product revenue bridges, NRR and RPO trends, and
+  produces (1) a stakeholder-ready narrative and (2) a formatted multi-tab
+  Excel pack. Designed to be invoked by a non-technical finance analyst in a
+  single prompt.
+
+triggers:
+  - "quarterly revenue analysis"
+  - "revenue summary for {quarter}"
+  - "how did {quarter} come in"
+  - "earnings prep revenue pack"
+
+inputs:
+  quarter:
+    type: string
+    required: true
+    description: Fiscal quarter label, e.g. "Q1 FY27"
+    validation: "^Q[1-4] FY\\d{2}$"
+  comparison:
+    type: string
+    required: false
+    default: "yoy_and_qoq"
+    enum: [yoy, qoq, yoy_and_qoq]
+  output_format:
+    type: string
+    required: false
+    default: "narrative"
+    enum: [narrative, excel_pack, both]
+  audience:
+    type: string
+    required: false
+    default: "strategic_finance"
+    enum: [strategic_finance, senior_leadership, investor_relations]
+
+data_sources:
+  - table: FINANCE.REPORTING.QUARTERLY_METRICS
+    description: One row per fiscal quarter; product/total revenue, NRR, RPO, $1M+ customers
+    local_fallback: data/snow_quarterly_metrics.csv
+
+steps:
+  - id: load
+    run: Load quarterly metrics; validate requested quarter exists and is the latest or earlier.
+  - id: compute
+    run: Compute QoQ/YoY deltas, growth rates, 4-quarter trailing trends, and sequential dollar adds (see SKILL.md for definitions).
+  - id: narrate
+    run: Draft narrative per audience template in SKILL.md; every number must trace to the computed table — no model-generated figures.
+  - id: export
+    run: If output_format includes excel_pack, call exports/build_earnings_pack.py with the computed frame.
+  - id: validate
+    run: Run the output checklist in SKILL.md before returning anything to a stakeholder.
+
+quality_gates:
+  - "All figures reconcile to the source table (tolerance: $0.1M)"
+  - "YoY % recomputed from raw values, never quoted from prior text"
+  - "Narrative flags any metric that moved >2pts vs. trailing-4Q average"
+  - "No forward-looking statements unless guidance fields are present"
