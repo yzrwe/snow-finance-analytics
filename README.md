@@ -61,5 +61,3 @@ non-headline fields (e.g., total revenue for recent quarters) are estimates
 where not separately disclosed, flagged for a demo context.
 
 ---
-
-*Regis Yizerwe — yizerwer@gmail.com*
